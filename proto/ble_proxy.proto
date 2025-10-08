@@ -1,0 +1,620 @@
+// BLE Proxy Protocol Definition
+// Version: 1.0.0
+// Package: bleproxy.v1
+//
+// This protocol enables React Native applications running in simulators/emulators
+// to communicate with physical BLE peripherals through a macOS proxy server.
+//
+// Field Numbering Strategy:
+// - Fields 1-50: Core required fields
+// - Fields 51-80: Optional fields and metadata
+// - Fields 81-99: Reserved for future extensions
+// - Fields 100+: Complex nested structures
+//
+// Backward Compatibility:
+// - Never reuse deprecated field numbers
+// - Use reserved keyword for removed fields
+// - Optional fields use the optional keyword
+// - Extensions should use field numbers 81+
+
+syntax = "proto3";
+package bleproxy.v1;
+
+// ============================================================================
+// ENUMERATIONS
+// ============================================================================
+
+// Bluetooth adapter state enumeration matching react-native-ble-plx
+enum ManagerState {
+  MANAGER_STATE_UNKNOWN = 0;       // Initial state before initialization
+  MANAGER_STATE_RESETTING = 1;     // Bluetooth is resetting
+  MANAGER_STATE_UNSUPPORTED = 2;   // Bluetooth LE not supported on device
+  MANAGER_STATE_UNAUTHORIZED = 3;  // App not authorized to use Bluetooth
+  MANAGER_STATE_POWERED_OFF = 4;   // Bluetooth is powered off
+  MANAGER_STATE_POWERED_ON = 5;    // Bluetooth is powered on and ready
+}
+
+// Complete error code enumeration matching react-native-ble-plx
+// Error codes maintain 1:1 mapping with react-native-ble-plx BleErrorCode
+enum BleErrorCode {
+  // Implementation Specific (0-99)
+  ERROR_UNKNOWN = 0;
+  ERROR_BLUETOOTH_MANAGER_DESTROYED = 1;
+  ERROR_OPERATION_CANCELLED = 2;
+  ERROR_OPERATION_TIMED_OUT = 3;
+  ERROR_OPERATION_START_FAILED = 4;
+  ERROR_INVALID_IDENTIFIERS = 5;
+
+  // Bluetooth State (100-199)
+  ERROR_BLUETOOTH_UNSUPPORTED = 100;
+  ERROR_BLUETOOTH_UNAUTHORIZED = 101;
+  ERROR_BLUETOOTH_POWERED_OFF = 102;
+  ERROR_BLUETOOTH_IN_UNKNOWN_STATE = 103;
+  ERROR_BLUETOOTH_RESETTING = 104;
+  ERROR_BLUETOOTH_STATE_CHANGE_FAILED = 105;
+
+  // Device/Peripheral (200-299)
+  ERROR_DEVICE_CONNECTION_FAILED = 200;
+  ERROR_DEVICE_DISCONNECTED = 201;
+  ERROR_DEVICE_RSSI_READ_FAILED = 202;
+  ERROR_DEVICE_ALREADY_CONNECTED = 203;
+  ERROR_DEVICE_NOT_FOUND = 204;
+  ERROR_DEVICE_NOT_CONNECTED = 205;
+  ERROR_DEVICE_MTU_CHANGE_FAILED = 206;
+
+  // Services (300-399)
+  ERROR_SERVICES_DISCOVERY_FAILED = 300;
+  ERROR_INCLUDED_SERVICES_DISCOVERY_FAILED = 301;
+  ERROR_SERVICE_NOT_FOUND = 302;
+  ERROR_SERVICES_NOT_DISCOVERED = 303;
+
+  // Characteristics (400-499)
+  ERROR_CHARACTERISTICS_DISCOVERY_FAILED = 400;
+  ERROR_CHARACTERISTIC_WRITE_FAILED = 401;
+  ERROR_CHARACTERISTIC_READ_FAILED = 402;
+  ERROR_CHARACTERISTIC_NOTIFY_CHANGE_FAILED = 403;
+  ERROR_CHARACTERISTIC_NOT_FOUND = 404;
+  ERROR_CHARACTERISTICS_NOT_DISCOVERED = 405;
+  ERROR_CHARACTERISTIC_INVALID_DATA_FORMAT = 406;
+
+  // Descriptors (500-599)
+  ERROR_DESCRIPTORS_DISCOVERY_FAILED = 500;
+  ERROR_DESCRIPTOR_WRITE_FAILED = 501;
+  ERROR_DESCRIPTOR_READ_FAILED = 502;
+  ERROR_DESCRIPTOR_NOT_FOUND = 503;
+  ERROR_DESCRIPTORS_NOT_DISCOVERED = 504;
+  ERROR_DESCRIPTOR_INVALID_DATA_FORMAT = 505;
+  ERROR_DESCRIPTOR_WRITE_NOT_ALLOWED = 506;
+
+  // Scanning (600-699)
+  ERROR_SCAN_START_FAILED = 600;
+  ERROR_LOCATION_SERVICES_DISABLED = 601;
+
+  // Server-specific (1000+)
+  ERROR_SERVER_ERROR = 1000;
+  ERROR_SERVER_TIMEOUT = 1001;
+  ERROR_SERVER_UNAVAILABLE = 1002;
+  ERROR_PROTOCOL_ERROR = 1003;
+}
+
+// ============================================================================
+// DATA STRUCTURES
+// ============================================================================
+
+// Error message with code, description, and optional platform-specific details
+message Error {
+  // Error code from BleErrorCode enum
+  int32 code = 1;
+
+  // Human-readable error message
+  string message = 2;
+
+  // Optional ATT (Attribute Protocol) error code for GATT operations
+  // Values 0x01-0xFF from Bluetooth Core Spec Vol 3, Part F, Section 3.4.1.1
+  optional int32 att_error_code = 3;
+
+  // Original platform error string (for debugging)
+  optional string platform_error = 4;
+
+  // Reserved for future error metadata
+  reserved 5 to 10;
+}
+
+// GATT Descriptor
+message Descriptor {
+  // Descriptor UUID (e.g., "00002902-0000-1000-8000-00805f9b34fb" for CCCD)
+  string uuid = 1;
+
+  // Descriptor value (if read)
+  optional bytes value = 2;
+
+  reserved 3 to 10;
+}
+
+// GATT Characteristic
+message Characteristic {
+  // Characteristic UUID
+  string uuid = 1;
+
+  // Characteristic properties as string array
+  // Possible values: "broadcast", "read", "writeWithoutResponse", "write",
+  //                  "notify", "indicate", "authenticatedSignedWrites", "extendedProperties"
+  repeated string properties = 2;
+
+  // Descriptors for this characteristic
+  repeated Descriptor descriptors = 3;
+
+  // Characteristic value (if read)
+  optional bytes value = 4;
+
+  reserved 5 to 10;
+}
+
+// GATT Service
+message Service {
+  // Service UUID (128-bit or 16-bit)
+  string uuid = 1;
+
+  // Characteristics in this service
+  repeated Characteristic characteristics = 2;
+
+  // Whether this is a primary or secondary service
+  optional bool is_primary = 3;
+
+  reserved 4 to 10;
+}
+
+// BLE Device representation
+message Device {
+  // Device identifier (CBPeripheral.identifier.uuidString on iOS)
+  string id = 1;
+
+  // Local name from advertisement data
+  optional string name = 2;
+
+  // RSSI in dBm (-100 to 0)
+  optional int32 rssi = 3;
+
+  // MTU (Maximum Transmission Unit) in bytes
+  optional int32 mtu = 4;
+
+  // Manufacturer-specific data from advertisement
+  optional bytes manufacturer_data = 5;
+
+  // Advertised service UUIDs
+  repeated string service_uuids = 6;
+
+  // Service-specific data from advertisement
+  map<string, bytes> service_data = 7;
+
+  // TX power level from advertisement
+  optional int32 tx_power_level = 8;
+
+  // Whether device is connectable
+  optional bool is_connectable = 9;
+
+  // Solicited service UUIDs
+  repeated string solicited_service_uuids = 10;
+
+  // Overflow service UUIDs
+  repeated string overflow_service_uuids = 11;
+
+  reserved 12 to 20;
+}
+
+// ============================================================================
+// HTTP REQUEST/RESPONSE PAIRS
+// ============================================================================
+
+// Health Check
+// Endpoint: GET /v1/health
+
+message HealthRequest {
+  // Empty request body
+}
+
+message HealthResponse {
+  // Whether server is ready to accept BLE requests
+  bool ready = 1;
+
+  // Server version (e.g., "1.0.0")
+  string server_version = 2;
+
+  // Protocol version (e.g., "v1")
+  string protocol_version = 3;
+
+  // Current Bluetooth adapter state
+  ManagerState bluetooth_state = 4;
+
+  reserved 5 to 10;
+}
+
+// Manager State Query
+// Endpoint: POST /v1/state
+
+message StateRequest {
+  // Empty request body
+}
+
+message StateResponse {
+  // Current manager state
+  ManagerState state = 1;
+
+  // Error if state cannot be determined
+  optional Error error = 2;
+
+  reserved 3 to 10;
+}
+
+// Scan Operations
+// Endpoint: POST /v1/scan/start
+
+message StartScanRequest {
+  // Filter by service UUIDs (empty array scans for all devices)
+  repeated string service_uuids = 1;
+
+  // Scan options
+  // Common keys: "allowDuplicates" (bool), "scanMode" (Android)
+  map<string, string> options = 2;
+
+  reserved 3 to 10;
+}
+
+message StartScanResponse {
+  // Whether scan started successfully
+  bool success = 1;
+
+  // Error if scan failed to start
+  optional Error error = 2;
+
+  reserved 3 to 10;
+}
+
+// Endpoint: POST /v1/scan/stop
+
+message StopScanRequest {
+  // Empty request body
+}
+
+message StopScanResponse {
+  // Whether scan stopped successfully
+  bool success = 1;
+
+  // Error if scan failed to stop
+  optional Error error = 2;
+
+  reserved 3 to 10;
+}
+
+// Connection Operations
+// Endpoint: POST /v1/device/connect
+
+message ConnectRequest {
+  // Device ID to connect to (from scan results)
+  string device_id = 1;
+
+  // Connection options
+  // Common keys: "timeout" (ms), "autoConnect" (bool, Android)
+  map<string, string> options = 2;
+
+  reserved 3 to 10;
+}
+
+message ConnectResponse {
+  // Whether connection succeeded
+  bool success = 1;
+
+  // Error if connection failed
+  optional Error error = 2;
+
+  // Connected device information
+  optional Device device = 3;
+
+  reserved 4 to 10;
+}
+
+// Endpoint: POST /v1/device/disconnect
+
+message DisconnectRequest {
+  // Device ID to disconnect
+  string device_id = 1;
+
+  reserved 2 to 10;
+}
+
+message DisconnectResponse {
+  // Whether disconnection succeeded
+  bool success = 1;
+
+  // Error if disconnection failed
+  optional Error error = 2;
+
+  reserved 3 to 10;
+}
+
+// Endpoint: POST /v1/device/isconnected
+
+message IsConnectedRequest {
+  // Device ID to check
+  string device_id = 1;
+
+  reserved 2 to 10;
+}
+
+message IsConnectedResponse {
+  // Whether device is currently connected
+  bool is_connected = 1;
+
+  // Error if connection state cannot be determined
+  optional Error error = 2;
+
+  reserved 3 to 10;
+}
+
+// Discovery Operations
+// Endpoint: POST /v1/device/discover
+
+message DiscoverRequest {
+  // Device ID to discover services for (must be connected)
+  string device_id = 1;
+
+  reserved 2 to 10;
+}
+
+message DiscoverResponse {
+  // Discovered services with their characteristics
+  repeated Service services = 1;
+
+  // Error if discovery failed
+  optional Error error = 2;
+
+  reserved 3 to 10;
+}
+
+// Endpoint: POST /v1/device/services
+
+message ServicesRequest {
+  // Device ID to get services for
+  string device_id = 1;
+
+  reserved 2 to 10;
+}
+
+message ServicesResponse {
+  // Cached services for this device
+  repeated Service services = 1;
+
+  // Error if services not available
+  optional Error error = 2;
+
+  reserved 3 to 10;
+}
+
+// Endpoint: POST /v1/device/characteristics
+
+message CharacteristicsRequest {
+  // Device ID
+  string device_id = 1;
+
+  // Service UUID to get characteristics for
+  string service_uuid = 2;
+
+  reserved 3 to 10;
+}
+
+message CharacteristicsResponse {
+  // Characteristics for the specified service
+  repeated Characteristic characteristics = 1;
+
+  // Error if characteristics not available
+  optional Error error = 2;
+
+  reserved 3 to 10;
+}
+
+// Read/Write Operations
+// Endpoint: POST /v1/device/read
+
+message ReadRequest {
+  // Device ID
+  string device_id = 1;
+
+  // Service UUID
+  string service_uuid = 2;
+
+  // Characteristic UUID to read
+  string characteristic_uuid = 3;
+
+  reserved 4 to 10;
+}
+
+message ReadResponse {
+  // Characteristic value (empty if read failed)
+  bytes value = 1;
+
+  // Error if read failed
+  optional Error error = 2;
+
+  reserved 3 to 10;
+}
+
+// Endpoint: POST /v1/device/write
+
+message WriteRequest {
+  // Device ID
+  string device_id = 1;
+
+  // Service UUID
+  string service_uuid = 2;
+
+  // Characteristic UUID to write
+  string characteristic_uuid = 3;
+
+  // Value to write
+  bytes value = 4;
+
+  // Whether to request write confirmation from peripheral
+  bool with_response = 5;
+
+  reserved 6 to 10;
+}
+
+message WriteResponse {
+  // Whether write succeeded
+  bool success = 1;
+
+  // Error if write failed
+  optional Error error = 2;
+
+  reserved 3 to 10;
+}
+
+// Monitoring Operations
+// Endpoint: POST /v1/device/monitor
+
+message MonitorRequest {
+  // Device ID
+  string device_id = 1;
+
+  // Service UUID
+  string service_uuid = 2;
+
+  // Characteristic UUID to monitor
+  string characteristic_uuid = 3;
+
+  // Whether to enable (true) or disable (false) monitoring
+  bool enable = 4;
+
+  reserved 5 to 10;
+}
+
+message MonitorResponse {
+  // Whether monitor operation succeeded
+  bool success = 1;
+
+  // Error if monitor operation failed
+  optional Error error = 2;
+
+  reserved 3 to 10;
+}
+
+// RSSI Operations
+// Endpoint: POST /v1/device/rssi
+
+message RSSIRequest {
+  // Device ID to read RSSI for (must be connected)
+  string device_id = 1;
+
+  reserved 2 to 10;
+}
+
+message RSSIResponse {
+  // RSSI value in dBm (typically -100 to 0)
+  int32 rssi = 1;
+
+  // Error if RSSI read failed
+  optional Error error = 2;
+
+  reserved 3 to 10;
+}
+
+// ============================================================================
+// WEBSOCKET EVENTS
+// ============================================================================
+
+// Manager state change event
+message ManagerStateEvent {
+  // New manager state
+  ManagerState state = 1;
+
+  // Timestamp (Unix milliseconds)
+  int64 timestamp = 2;
+
+  reserved 3 to 10;
+}
+
+// Scan result event (peripheral discovered)
+message ScanResultEvent {
+  // Device information
+  Device device = 1;
+
+  // Timestamp of discovery (Unix milliseconds)
+  int64 timestamp = 2;
+
+  reserved 3 to 10;
+}
+
+// Peripheral connected event
+message PeripheralConnectedEvent {
+  // Device ID that connected
+  string device_id = 1;
+
+  // Timestamp (Unix milliseconds)
+  int64 timestamp = 2;
+
+  reserved 3 to 10;
+}
+
+// Peripheral disconnected event
+message PeripheralDisconnectedEvent {
+  // Device ID that disconnected
+  string device_id = 1;
+
+  // Error if disconnection was unexpected
+  optional Error error = 2;
+
+  // Timestamp (Unix milliseconds)
+  int64 timestamp = 3;
+
+  reserved 4 to 10;
+}
+
+// Characteristic value update event (notification/indication)
+message CharacteristicValueUpdatedEvent {
+  // Device ID
+  string device_id = 1;
+
+  // Service UUID
+  string service_uuid = 2;
+
+  // Characteristic UUID
+  string characteristic_uuid = 3;
+
+  // New characteristic value
+  bytes value = 4;
+
+  // Timestamp (Unix milliseconds)
+  int64 timestamp = 5;
+
+  reserved 6 to 10;
+}
+
+// Server error event
+message ServerErrorEvent {
+  // Error information
+  Error error = 1;
+
+  // Timestamp (Unix milliseconds)
+  int64 timestamp = 2;
+
+  // Optional context about what operation failed
+  optional string context = 3;
+
+  reserved 4 to 10;
+}
+
+// WebSocket event wrapper
+// This message wraps all WebSocket events for proper framing and deserialization
+// Clients should decode WsEvent and then use the oneof discriminator to determine event type
+message WsEvent {
+  oneof event {
+    ManagerStateEvent manager_state_event = 1;
+    ScanResultEvent scan_result_event = 2;
+    PeripheralConnectedEvent peripheral_connected_event = 3;
+    PeripheralDisconnectedEvent peripheral_disconnected_event = 4;
+    CharacteristicValueUpdatedEvent characteristic_value_updated_event = 5;
+    ServerErrorEvent server_error_event = 6;
+  }
+
+  reserved 7 to 20;
+}

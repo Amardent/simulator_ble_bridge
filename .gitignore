@@ -1,0 +1,31 @@
+# General
+.DS_Store
+*.log
+.idea/
+.vscode/
+.claude/
+
+# macOS / Swift
+# Ignore Swift Package Manager build artifacts
+/server/.build/
+# Ignore user-specific Xcode files
+*.xcodeproj
+*.xcworkspace
+*.xcuserdata
+*.xcuserdatad
+
+# Node.js / React Native
+# Ignore node_modules directory for the client
+/client/node_modules/
+# Ignore common build/dist directories for the client
+/client/build/
+/client/dist/
+# Ignore npm/yarn log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+# Ignore Python cache files
+__pycache__/
+*.pyc
