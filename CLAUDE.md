@@ -109,14 +109,17 @@ When asked to do something, just do it - including obvious follow-up actions nee
 
 ## Version Control
 
+This repo has an upstream GitHub repository. Eric handles all pushes to the remote.
+
 - If the project isn't in a git repo, STOP and ask permission to initialize one.
-- YOU MUST STOP and ask how to handle uncommitted changes or untracked files when starting work.  Suggest committing existing work first.
+- YOU MUST STOP and ask how to handle uncommitted changes or untracked files when starting work. Suggest committing existing work first.
 - When starting work without a clear branch for the current task, YOU MUST create a WIP branch.
-- YOU MUST TRACK All non-trivial changes in git.
-- YOU MUST commit frequently throughout the development process, even if your high-level tasks are not yet done. Commit your journal entries.
+- YOU MUST TRACK all non-trivial changes in git.
+- Commit in logical batches that Eric can review and push. Group related changes together (e.g., "documentation consolidation", "step-10 completion notes"). Avoid micro-commits for every tiny edit.
 - When you wrap up a task, YOU MUST merge the WIP branch back into main using `git checkout main && git merge <branch> --no-edit`
 - NEVER SKIP, EVADE OR DISABLE A PRE-COMMIT HOOK
 - NEVER use `git add -A` unless you've just done a `git status` - Don't add random test files to the repo.
+- NEVER push to the remote repository - Eric will handle pushes after reviewing commits.
 
 ## Testing
 
