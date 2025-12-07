@@ -456,6 +456,31 @@ swift-backend-engineer
 ## Estimated Time
 2-3 hours
 
+## Completion Notes (2025-10-07)
+
+**Status:** ✅ COMPLETE
+
+### Test Results
+- ✅ WebSocket connects at `ws://127.0.0.1:5050/v1/events`
+- ✅ Initial `ManagerStateEvent` sent (POWERED_ON)
+- ✅ Scan results stream as `ScanResultEvent` (~13 events/sec)
+- ✅ Connection/disconnection events broadcast
+- ✅ Characteristic notifications broadcast
+- ✅ Binary protobuf frames (not text)
+- ✅ Multiple clients supported
+- ✅ All 39 tests passing
+
+### Files Modified
+- `BLEManager.swift`: Added `scanCallbacks` array, `connectionCallback`, `notificationCallback`
+- `BLEController.swift`: Added `handleWebSocket`, `broadcast`, `setupBLECallbacks` (lines 484-645)
+- `routes.swift`: WebSocket route at `/v1/events` (already existed)
+
+### Key Decisions
+- Array-based scan callbacks (HTTP + WebSocket both receive results)
+- Single registration flag (`bleCallbacksRegistered`)
+- 0.1s delay for initial state event (ensures connection established)
+- Closed sockets cleaned up atomically during broadcast
+
 ## Implementation Notes
 
 **Threading:** All BLE callbacks execute on background queue. WebSocket operations use dedicated `wsQueue`.

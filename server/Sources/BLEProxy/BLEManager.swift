@@ -51,6 +51,11 @@ public class BLEManager: NSObject {
     /// Key: peripheral UUID, Value: array of discovered Service protobuf messages
     private var cachedServices: [UUID: [Bleproxy_V1_Service]] = [:]
 
+    /// Cached MTU values for connected peripherals
+    /// Key: peripheral UUID, Value: negotiated MTU size in bytes
+    /// Updated in didConnect delegate after connection is established
+    private var cachedMTU: [UUID: Int32] = [:]
+
     /// Pending characteristic read completion handlers (Step 5)
     /// Key: CharacteristicKey combining device, service, and characteristic UUIDs
     private var pendingReads: [CharacteristicKey: (Result<Data, Error>) -> Void] = [:]
@@ -151,9 +156,8 @@ public class BLEManager: NSObject {
     /// - Parameters:
     ///   - serviceUUIDs: Optional array of service UUIDs to filter scan results.
     ///                   If nil, discovers all peripherals.
-    ///   - callback: Called for each discovered peripheral with device information
-    /// - Throws: Will log error if Bluetooth is not powered on
-    public func startScan(serviceUUIDs: [CBUUID]?, callback: @escaping (Bleproxy_V1_Device) -> Void) {
+    /// - Note: Results are delivered via scan callbacks registered with addScanCallback()
+    public func startScan(serviceUUIDs: [CBUUID]?) {
         queue.async { [weak self] in
             guard let self = self else { return }
 
@@ -162,9 +166,6 @@ public class BLEManager: NSObject {
                 print("BLEManager: Cannot start scan - Bluetooth state is \(self.centralManager.state.rawValue)")
                 return
             }
-
-            // Add callback with temporary ID for HTTP endpoint compatibility
-            self.scanCallbacks.append((id: "http-endpoint", callback: callback))
 
             // Start scanning with option to report duplicate discoveries
             // This allows tracking RSSI changes for the same peripheral
@@ -178,11 +179,11 @@ public class BLEManager: NSObject {
     }
 
     /// Stops any active scan operation
+    /// - Note: Scan callbacks remain registered and will receive events on next scan
     public func stopScan() {
         queue.async { [weak self] in
             guard let self = self else { return }
             self.centralManager.stopScan()
-            self.removeAllScanCallbacks()
             print("BLEManager: Stopped scanning")
         }
     }
@@ -329,6 +330,39 @@ public class BLEManager: NSObject {
         var result = false
         queue.sync {
             result = self.connectedPeripherals[uuid] != nil
+        }
+        return result
+    }
+
+    /// Gets device information for a connected peripheral including negotiated MTU
+    /// - Parameter deviceId: The UUID string of the connected peripheral
+    /// - Returns: Device protobuf message with MTU populated, or nil if not connected
+    /// - Note: This method is thread-safe and can be called from any queue
+    public func getConnectedDevice(deviceId: String) -> Bleproxy_V1_Device? {
+        guard let uuid = UUID(uuidString: deviceId) else {
+            return nil
+        }
+
+        var result: Bleproxy_V1_Device?
+        queue.sync {
+            guard let peripheral = self.connectedPeripherals[uuid] else {
+                return
+            }
+
+            var device = Bleproxy_V1_Device()
+            device.id = peripheral.identifier.uuidString
+
+            // Populate name if available from peripheral
+            if let name = peripheral.name {
+                device.name = name
+            }
+
+            // Populate cached MTU if available
+            if let mtu = self.cachedMTU[uuid] {
+                device.mtu = mtu
+            }
+
+            result = device
         }
         return result
     }
@@ -1049,6 +1083,9 @@ public class BLEManager: NSObject {
             device.overflowServiceUuids = overflowUUIDs.map { $0.uuidString }
         }
 
+        // MTU is NOT set here - it's only available after connection is established
+        // MTU will be populated in didConnect delegate using peripheral.maximumWriteValueLength
+
         return device
     }
 }
@@ -1109,6 +1146,13 @@ extension BLEManager: CBCentralManagerDelegate {
         // Move peripheral to connected storage
         connectedPeripherals[uuid] = peripheral
 
+        // Cache MTU value (negotiated after connection)
+        // Use maximumWriteValueLength for write-without-response as it's the most common case
+        // This represents the maximum data payload size that can be sent
+        let mtuValue = peripheral.maximumWriteValueLength(for: .withoutResponse)
+        cachedMTU[uuid] = Int32(mtuValue)
+        print("BLEManager: MTU for \(uuid.uuidString): \(mtuValue) bytes")
+
         // Invoke completion handler if pending
         if let completion = pendingConnections.removeValue(forKey: uuid) {
             completion(.success(()))
@@ -1163,6 +1207,9 @@ extension BLEManager: CBCentralManagerDelegate {
 
         // Clean up cached services (Step 5)
         cachedServices.removeValue(forKey: uuid)
+
+        // Clean up cached MTU value
+        cachedMTU.removeValue(forKey: uuid)
 
         // Clean up any pending reads and their timeouts (Step 5)
         for (key, timeoutWork) in readTimeouts where key.deviceId == uuid {

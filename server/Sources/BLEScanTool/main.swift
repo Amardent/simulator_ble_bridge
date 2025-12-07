@@ -14,6 +14,41 @@ let manager = BLEManager()
 var discoveredDevices: [String: (name: String?, rssi: Int32, count: Int)] = [:]
 let startTime = Date()
 
+// Register scan callback
+manager.addScanCallback(id: "cli-scanner") { device in
+    // Update or add device
+    let previousCount = discoveredDevices[device.id]?.count ?? 0
+    let name = device.name.isEmpty ? "<No Name>" : device.name
+    discoveredDevices[device.id] = (name: device.name.isEmpty ? nil : device.name,
+                                   rssi: device.rssi,
+                                   count: previousCount + 1)
+
+    // Print discovery
+    let elapsed = String(format: "%.1f", Date().timeIntervalSince(startTime))
+    print("[\(elapsed)s] 📱 \(name)")
+    print("       ID: \(device.id)")
+    print("       RSSI: \(device.rssi) dBm")
+
+    if device.hasIsConnectable {
+        print("       Connectable: \(device.isConnectable ? "Yes" : "No")")
+    }
+
+    if !device.serviceUuids.isEmpty {
+        print("       Services: \(device.serviceUuids.joined(separator: ", "))")
+    }
+
+    if device.hasManufacturerData && !device.manufacturerData.isEmpty {
+        print("       Manufacturer Data: \(device.manufacturerData.count) bytes")
+    }
+
+    if device.hasTxPowerLevel {
+        print("       TX Power: \(device.txPowerLevel) dBm")
+    }
+
+    print("       Advertisements: \(discoveredDevices[device.id]?.count ?? 1)")
+    print()
+}
+
 // Track state changes
 manager.stateCallback = { state in
     let stateString: String
@@ -39,35 +74,7 @@ manager.stateCallback = { state in
     // Start scanning when powered on
     if state == .poweredOn {
         print("🔍 Starting scan for all BLE peripherals...\n")
-        manager.startScan(serviceUUIDs: nil) { device in
-            // Update or add device
-            let previousCount = discoveredDevices[device.id]?.count ?? 0
-            let name = device.name.isEmpty ? "<No Name>" : device.name
-            discoveredDevices[device.id] = (name: device.name.isEmpty ? nil : device.name,
-                                           rssi: device.rssi,
-                                           count: previousCount + 1)
-
-            // Print discovery
-            let elapsed = String(format: "%.1f", Date().timeIntervalSince(startTime))
-            print("[\(elapsed)s] 📱 \(name)")
-            print("       ID: \(device.id)")
-            print("       RSSI: \(device.rssi) dBm")
-
-            if !device.serviceUuids.isEmpty {
-                print("       Services: \(device.serviceUuids.joined(separator: ", "))")
-            }
-
-            if device.hasManufacturerData && !device.manufacturerData.isEmpty {
-                print("       Manufacturer Data: \(device.manufacturerData.count) bytes")
-            }
-
-            if device.hasTxPowerLevel {
-                print("       TX Power: \(device.txPowerLevel) dBm")
-            }
-
-            print("       Advertisements: \(discoveredDevices[device.id]?.count ?? 1)")
-            print()
-        }
+        manager.startScan(serviceUUIDs: nil)
     }
 }
 

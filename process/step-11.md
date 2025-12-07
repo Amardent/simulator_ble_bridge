@@ -315,3 +315,197 @@ react-native-library-developer
 
 ## Estimated Time
 2 hours
+
+## Step 10 Integration Notes (WebSocket Implementation Findings)
+
+**Updated:** 2025-10-07 after Step 10 completion
+
+The WebSocket server implementation (Step 10) has been completed and tested. Here are critical findings for React Native client integration:
+
+### WebSocket Connection Details
+
+**Endpoint:** `ws://127.0.0.1:5050/v1/events`
+
+**Connection Flow:**
+1. Connect to WebSocket endpoint
+2. Immediately receive initial `ManagerStateEvent` (within 0.1s)
+3. All subsequent BLE events broadcast as binary protobuf frames
+4. Multiple clients supported concurrently
+
+**Critical:** WebSocket uses **binary frames only** (not text). Set `binaryType = 'arraybuffer'`:
+```typescript
+this.ws = new WebSocket('ws://127.0.0.1:5050/v1/events');
+this.ws.binaryType = 'arraybuffer';  // REQUIRED
+```
+
+### Event Types and Field Names
+
+All 6 WebSocket event types are in `Bleproxy_V1_WsEvent` oneof:
+
+1. **`managerStateEvent`** - Bluetooth adapter state
+   - Field: `state` (enum: UNKNOWN, RESETTING, UNSUPPORTED, UNAUTHORIZED, POWERED_OFF, POWERED_ON)
+   - Field: `timestamp` (Int64, Unix milliseconds)
+
+2. **`scanResultEvent`** - Discovered peripheral
+   - Field: `device` (Bleproxy_V1_Device object)
+   - Field: `timestamp` (Int64, Unix milliseconds)
+   - Device fields: `id`, `rssi`, `service_uuids`, `manufacturer_data`, `tx_power_level`, `is_connectable`
+   - **Note:** Device name may not be present (check for undefined)
+
+3. **`peripheralConnectedEvent`** - Device connected
+   - Field: `deviceID` (string, note camelCase)
+   - Field: `timestamp` (Int64, Unix milliseconds)
+
+4. **`peripheralDisconnectedEvent`** - Device disconnected
+   - Field: `deviceID` (string)
+   - Field: `timestamp` (Int64, Unix milliseconds)
+   - Field: `error` (optional, Bleproxy_V1_Error)
+
+5. **`characteristicValueUpdatedEvent`** - Notification received
+   - Field: `deviceID` (string)
+   - Field: `serviceUuid` (string, note camelCase)
+   - Field: `characteristicUuid` (string, note camelCase)
+   - Field: `value` (bytes)
+   - Field: `timestamp` (Int64, Unix milliseconds)
+
+6. **`serverErrorEvent`** - Reserved for future use
+
+**⚠️ Field Naming:** JavaScript/TypeScript protobuf uses camelCase (e.g., `deviceID`, `serviceUuid`), NOT snake_case
+
+### Protobuf Decoding Pattern
+
+```typescript
+this.ws.onmessage = (event: MessageEvent) => {
+  const buffer = new Uint8Array(event.data);
+  const wsEvent = BleProxy.bleproxy.v1.WsEvent.decode(buffer);
+  
+  // Check which event type is set
+  if (wsEvent.managerStateEvent) {
+    // Handle manager state
+  } else if (wsEvent.scanResultEvent) {
+    // Handle scan result
+  } else if (wsEvent.peripheralConnectedEvent) {
+    // Handle connection
+  } else if (wsEvent.peripheralDisconnectedEvent) {
+    // Handle disconnection
+  } else if (wsEvent.characteristicValueUpdatedEvent) {
+    // Handle notification
+  }
+};
+```
+
+### Scan Flow (HTTP + WebSocket)
+
+**Important:** Scan uses both HTTP and WebSocket:
+
+1. **Start scan:** HTTP POST `/v1/scan/start` (empty or with service UUIDs)
+2. **Receive results:** WebSocket `scanResultEvent` messages
+3. **Stop scan:** HTTP POST `/v1/scan/stop`
+
+Scan results stream continuously over WebSocket until stopped. Tested performance: ~13 events/second with 25+ devices.
+
+**Device Object Fields:**
+```typescript
+{
+  id: string,              // UUID
+  rssi: number,            // Signal strength (negative int)
+  service_uuids?: string[], // Advertised services (may be empty)
+  manufacturer_data?: Uint8Array,
+  tx_power_level?: number,
+  is_connectable?: boolean
+}
+```
+
+### Timestamp Handling
+
+All events include `timestamp` field (Int64, Unix milliseconds):
+```typescript
+const timestamp = Number(event.scanResultEvent.timestamp);
+const date = new Date(timestamp);
+```
+
+### Error Handling
+
+Errors in protobuf responses use `Bleproxy_V1_Error`:
+- `code`: Int32 (matches react-native-ble-plx error codes 0-699, server codes 1000+)
+- `message`: String description
+
+### Connection Lifecycle
+
+**WebSocket Cleanup:**
+- Remove all event listeners on disconnect
+- Clear scan listener when scan stops
+- Unsubscribe from characteristic monitors when removed
+
+**Reconnection:** Not implemented in Step 10. React Native client should handle:
+- Auto-reconnect on connection loss
+- Restore scan/monitor subscriptions after reconnect
+- Buffer events during disconnect (optional)
+
+### Testing Results
+
+**End-to-End Test Validated:**
+1. ✅ WebSocket connection succeeds
+2. ✅ Initial `ManagerStateEvent` received (POWERED_ON)
+3. ✅ HTTP scan started successfully
+4. ✅ 130 `ScanResultEvent` messages received in 10 seconds
+5. ✅ 25 unique devices discovered
+6. ✅ Scan stopped via HTTP
+7. ✅ Named devices: "CoolLEDUX", "Hue bulb", "LE-Bose Micro SoundLink"
+
+**WebSocket Test Script:** `/tmp/ws_scan_test.py` (Python, can be reference for TypeScript)
+
+### Key Takeaways for Step 11-12
+
+1. **Always set `binaryType = 'arraybuffer'`** on WebSocket
+2. **Use camelCase field names** in TypeScript (protobufjs convention)
+3. **Device name may be undefined** - check before accessing
+4. **Scan uses HTTP to start/stop, WebSocket for results** - not a pure WebSocket operation
+5. **Timestamps are Int64** - convert to Number in JavaScript
+6. **Multiple events per device** - deduplicate by device ID if needed
+7. **HTTP and WebSocket work together** - not separate channels
+
+## Completion Notes (2025-10-07)
+
+**Status:** ✅ COMPLETE
+
+### Deliverables
+- ✅ Package structure (package.json, tsconfig.json, .npmignore)
+- ✅ PlatformDetector.ts - iOS Simulator and Android Emulator detection
+- ✅ types.ts - BleError, BleErrorCode enum (39 codes from react-native-ble-plx + ServerError)
+- ✅ index.ts - createBleManager() factory with platform detection
+- ✅ Protobuf generated files in src/generated/
+
+### Build Verification
+```
+npm run build  # TypeScript compiles without errors
+npm pack --dry-run  # 12 files, 43.5KB compressed
+```
+
+### Files Created
+```
+client/
+├── package.json
+├── tsconfig.json
+├── .npmignore
+├── README.md
+├── src/
+│   ├── index.ts
+│   ├── PlatformDetector.ts
+│   ├── types.ts
+│   └── generated/
+│       ├── ble_proxy.js (520KB)
+│       ├── ble_proxy.d.ts (195KB)
+│       └── index.ts
+└── lib/ (build output)
+```
+
+### Implementation Notes
+- Removed `uiMode` check (not available in React Native Platform.constants for iOS)
+- Simplified iOS detection using `__DEV__` flag + `interfaceIdiom` check
+- Added type casting (`as any`) for Platform.constants TypeScript limitations
+- Protobuf files are pre-compiled JavaScript, copied via build script
+
+### Acceptance Criteria: ALL MET ✅
+All criteria from specification met. Ready for Step 12 (ProxyBleManager implementation).
+

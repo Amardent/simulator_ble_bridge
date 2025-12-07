@@ -45,12 +45,8 @@ final class BLEController {
         // Convert service UUID strings to CBUUID array
         let serviceUUIDs: [CBUUID]? = request.serviceUuids.isEmpty ? nil : request.serviceUuids.map { CBUUID(string: $0) }
 
-        // Start scanning (results will be sent via WebSocket in Step 10)
-        bleManager.startScan(serviceUUIDs: serviceUUIDs) { device in
-            // Scan callback will be used in Step 10 for WebSocket events
-            // For now, just log discoveries
-            req.logger.debug("Discovered device: \(device.id)")
-        }
+        // Start scanning - results are delivered via WebSocket callbacks registered at startup
+        bleManager.startScan(serviceUUIDs: serviceUUIDs)
 
         response.success = true
         req.logger.info("Scan started successfully")
@@ -94,7 +90,7 @@ final class BLEController {
         }
 
         // Use continuation to bridge callback to async/await
-        return try await withCheckedThrowingContinuation { continuation in
+        let response = try await withCheckedThrowingContinuation { continuation in
             bleManager.connect(deviceId: deviceId) { result in
                 var response = Bleproxy_V1_ConnectResponse()
 
@@ -110,13 +106,18 @@ final class BLEController {
                     req.logger.error("Connection failed: \(error.localizedDescription)")
                 }
 
-                do {
-                    continuation.resume(returning: try Response.proto(response))
-                } catch {
-                    continuation.resume(throwing: error)
-                }
+                continuation.resume(returning: response)
             }
         }
+
+        // Populate device field after connection succeeds (outside callback to avoid deadlock)
+        if response.success, let device = bleManager.getConnectedDevice(deviceId: deviceId) {
+            var updatedResponse = response
+            updatedResponse.device = device
+            return try Response.proto(updatedResponse)
+        }
+
+        return try Response.proto(response)
     }
 
     /// POST /v1/device/disconnect - Disconnect from a device

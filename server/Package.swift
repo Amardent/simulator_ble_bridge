@@ -38,6 +38,10 @@ let package = Package(
             targets: ["BLEAMDTTestTool"]
         ),
         .executable(
+            name: "ble-device-info-test",
+            targets: ["BLEDeviceInfoTool"]
+        ),
+        .executable(
             name: "ble-proxy-server",
             targets: ["BLEProxyServer"]
         ),
@@ -112,6 +116,14 @@ let package = Package(
                 .target(name: "Generated"),
             ],
             path: "Sources/BLEAMDTTestTool"
+        ),
+        .executableTarget(
+            name: "BLEDeviceInfoTool",
+            dependencies: [
+                .target(name: "BLEProxy"),
+                .target(name: "Generated"),
+            ],
+            path: "Sources/BLEDeviceInfoTool"
         ),
         .executableTarget(
             name: "BLEProxyServer",

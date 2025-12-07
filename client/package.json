@@ -1,16 +1,32 @@
 {
-  "name": "ble-proxy-client",
+  "name": "react-native-ble-proxy",
   "version": "1.0.0",
-  "description": "React Native BLE Proxy Client Library",
-  "main": "src/index.ts",
+  "description": "BLE proxy wrapper for React Native simulators/emulators",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsc && npm run copy-proto",
+    "copy-proto": "cp src/generated/ble_proxy.js lib/generated/ && cp src/generated/ble_proxy.d.ts lib/generated/",
+    "watch": "tsc --watch",
+    "clean": "rm -rf lib",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "react-native",
+    "bluetooth",
+    "ble",
+    "simulator",
+    "emulator"
+  ],
+  "peerDependencies": {
+    "react-native": ">=0.70.0",
+    "react-native-ble-plx": "^3.0.0"
   },
   "dependencies": {
-    "protobufjs": "^7.4.0"
+    "protobufjs": "^7.2.5"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/react-native": "^0.72.0",
     "typescript": "^5.0.0"
   }
 }

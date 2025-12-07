@@ -376,3 +376,25 @@ macos-bluetooth-expert
 
 ## Estimated Time
 2-3 hours
+
+## Completion Notes (2025-10-06)
+
+**Status:** ✅ COMPLETE
+
+### Files Modified
+- `BLEManager.swift`: Added `writeCharacteristic` (lines 473-639), `monitorCharacteristic` (lines 640-745)
+- Extended `didUpdateValueFor` for notification routing
+- Added `didWriteValueFor` delegate, `didUpdateNotificationStateFor` delegate
+- Extended `didDisconnectPeripheral` for write/monitor cleanup
+
+### Hardware Validation
+- **Fi-FC35D000113**: Write operations validated (characteristic 57B40012*)
+- **FB6418, FB8113**: Discovery and monitoring validated
+- Write with response: Confirmed via delegate callback
+- Write without response: Flow control via `canSendWriteWithoutResponse`
+
+### Key Implementation Details
+- 10-second timeout for write with response (consistent with read)
+- CharacteristicKey pattern reused from Step 5
+- Read vs notification disambiguation in `didUpdateValueFor`
+- Disconnect cleanup for write timeouts, pending writes, and active monitors

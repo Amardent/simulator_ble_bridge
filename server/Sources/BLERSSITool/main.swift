@@ -40,6 +40,40 @@ print("BLE RSSI Test Tool")
 print("==================")
 print("Waiting for Bluetooth to power on...")
 
+// Scan callback
+manager.addScanCallback(id: "cli-tool") { device in
+    guard discoveredDeviceId == nil else { return }
+
+    discoveredDeviceId = device.id
+    manager.stopScan()
+
+    print("\n--- Device Discovered ---")
+    print("ID: \(device.id)")
+    if !device.name.isEmpty {
+        print("Name: \(device.name)")
+    }
+    print("Scan RSSI: \(device.rssi) dBm")
+
+    // Connect to the device
+    print("\nConnecting...")
+    manager.connect(deviceId: device.id) { result in
+        switch result {
+        case .success:
+            isConnected = true
+            print("Connected successfully!")
+            print("\nReading RSSI \(targetReadings) times (interval: \(Int(readInterval))s)...")
+
+            // Start reading RSSI
+            readRSSISequentially(deviceId: device.id, count: targetReadings)
+
+        case .failure(let error):
+            print("Connection failed: \(error)")
+            print("\nNote: If timeout, device may require pairing (not supported)")
+            exit(1)
+        }
+    }
+}
+
 manager.stateCallback = { state in
     print("Bluetooth state: \(state)")
 
@@ -48,38 +82,7 @@ manager.stateCallback = { state in
         print("\nScanning for BLE peripherals...")
         print("(Will connect to first device discovered)")
 
-        manager.startScan(serviceUUIDs: nil) { device in
-            guard discoveredDeviceId == nil else { return }
-
-            discoveredDeviceId = device.id
-            manager.stopScan()
-
-            print("\n--- Device Discovered ---")
-            print("ID: \(device.id)")
-            if !device.name.isEmpty {
-                print("Name: \(device.name)")
-            }
-            print("Scan RSSI: \(device.rssi) dBm")
-
-            // Connect to the device
-            print("\nConnecting...")
-            manager.connect(deviceId: device.id) { result in
-                switch result {
-                case .success:
-                    isConnected = true
-                    print("Connected successfully!")
-                    print("\nReading RSSI \(targetReadings) times (interval: \(Int(readInterval))s)...")
-
-                    // Start reading RSSI
-                    readRSSISequentially(deviceId: device.id, count: targetReadings)
-
-                case .failure(let error):
-                    print("Connection failed: \(error)")
-                    print("\nNote: If timeout, device may require pairing (not supported)")
-                    exit(1)
-                }
-            }
-        }
+        manager.startScan(serviceUUIDs: nil)
     }
 }
 
